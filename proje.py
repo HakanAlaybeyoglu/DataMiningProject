@@ -1,281 +1,149 @@
 import os
 import pandas as pd
-import glob
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.neural_network import MLPClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import classification_report, accuracy_score
+from transformers import BertTokenizer, BertModel
+import torch
+from tqdm import tqdm
+import warnings
+from sklearn.preprocessing import LabelEncoder
 
-# Hikayeleri ve yazarları tutacak listeler
+warnings.filterwarnings("ignore")
+
+# ======== 1. Veri Setini Açma ========
+dataset_path = "."  # Ana klasör
+
 texts = []
-authors = []
+labels = []
 
-# Ana klasör yolunu belirt
-dataset_path =  "proje/dataset_authorship" 
-
-
-# Her yazar klasörüne bak
 for author_folder in os.listdir(dataset_path):
     author_path = os.path.join(dataset_path, author_folder)
-    if os.path.isdir(author_path):  # Eğer gerçekten klasörse
-        # O yazarın klasöründeki her .txt dosyasını oku
-        for file_path in glob.glob(os.path.join(author_path, "*.txt")):
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                texts.append(content)
-                authors.append(author_folder)
+    if os.path.isdir(author_path):
+        for file in os.listdir(author_path):
+            file_path = os.path.join(author_path, file)
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                texts.append(f.read())
+                labels.append(author_folder)
 
-# Bir DataFrame oluştur
-df = pd.DataFrame({'author': authors, 'text': texts})
+df = pd.DataFrame({'text': texts, 'label': labels})
+print("Yazar dağılımı:\n", df['label'].value_counts())
 
-# İlk 5 satıra bakalım
-print(df.head())
+# ======== 2. Label Encoding ========
+label_encoder = LabelEncoder()
+df['label_encoded'] = label_encoder.fit_transform(df['label'])
 
-
-
-
-
-
-
-
-
-import re
-
-def temizle(metin):
-    # Küçük harfe çevir, özel karakterleri kaldır
-    metin = metin.lower()
-    metin = re.sub(r"[^a-zçğıöşü\s]", "", metin)  # Sadece harfler ve boşluklar
-    return metin
-
-# Temizlenmiş yeni bir sütun ekle
-df['clean_text'] = df['text'].apply(temizle)
-
-print(df[['author', 'clean_text']].head())
-
-
-
-
-
-
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-# TF-IDF vektörü oluştur
-vectorizer = TfidfVectorizer()
-X = vectorizer.fit_transform(df['clean_text'])
-
-# Etiketleri al
-y = df['author']
-
-
-
-
-
-
-
-
-
-
-
-
-from sklearn.model_selection import train_test_split
-
+# ======== 3. Eğitim/Test Ayrımı ========
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    df['text'], df['label_encoded'], test_size=0.2, random_state=42, stratify=df['label_encoded']
 )
 
-
-
-
-
-
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
-def modeli_degerlendir(model_adi, y_test, y_pred):
-    print(f"\n{model_adi} Sonuçları:")
-    print("Accuracy:", accuracy_score(y_test, y_pred))
-    print("Precision:", precision_score(y_test, y_pred, average='macro'))
-    print("Recall:", recall_score(y_test, y_pred, average='macro'))
-    print("F1 Score:", f1_score(y_test, y_pred, average='macro'))
-
-
-
-
-
-
-
-
-from sklearn.svm import SVC
-
-svm_model = SVC()
-svm_model.fit(X_train, y_train)
-y_pred_svm = svm_model.predict(X_test)
-
-modeli_degerlendir("SVM", y_test, y_pred_svm)
-
-
-
-
-
-
-
-
-
-from sklearn.ensemble import RandomForestClassifier
-
-rf_model = RandomForestClassifier()
-rf_model.fit(X_train, y_train)
-y_pred_rf = rf_model.predict(X_test)
-
-modeli_degerlendir("Random Forest", y_test, y_pred_rf)
-
-
-
-
-
-
-
-
-
-
-from sklearn.tree import DecisionTreeClassifier
-
-dt_model = DecisionTreeClassifier()
-dt_model.fit(X_train, y_train)
-y_pred_dt = dt_model.predict(X_test)
-
-modeli_degerlendir("Decision Tree", y_test, y_pred_dt)
-
-
-
-
-
-
-
-
-
-from xgboost import XGBClassifier
-
-xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
-xgb_model.fit(X_train, y_train)
-y_pred_xgb = xgb_model.predict(X_test)
-
-modeli_degerlendir("XGBoost", y_test, y_pred_xgb)
-
-
-
-
-
-
-
-from sklearn.naive_bayes import MultinomialNB
-
-nb_model = MultinomialNB()
-nb_model.fit(X_train, y_train)
-y_pred_nb = nb_model.predict(X_test)
-
-modeli_degerlendir("Naive Bayes", y_test, y_pred_nb)
-
-
-
-
-
-
-
-
-
-from sklearn.neural_network import MLPClassifier
-
-mlp_model = MLPClassifier(max_iter=300)
-mlp_model.fit(X_train, y_train)
-y_pred_mlp = mlp_model.predict(X_test)
-
-modeli_degerlendir("MLP", y_test, y_pred_mlp)
-
-
-
-
-
-
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-# 2-gram
-vectorizer_bigram = TfidfVectorizer(ngram_range=(2, 2))
-X_bigram = vectorizer_bigram.fit_transform(df['clean_text'])
-
-# 3-gram
-vectorizer_trigram = TfidfVectorizer(ngram_range=(3, 3))
-X_trigram = vectorizer_trigram.fit_transform(df['clean_text'])
-
-
-
-
-
-
-
-
-
-
-
-
-
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-
-def egit_degerlendir(X, y, model_adi="Model"):
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-
-    model = RandomForestClassifier()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    print(f"\n{model_adi} Sonuçları:")
-    print("Accuracy:", accuracy_score(y_test, y_pred))
-    print("Precision:", precision_score(y_test, y_pred, average='macro'))
-    print("Recall:", recall_score(y_test, y_pred, average='macro'))
-    print("F1 Score:", f1_score(y_test, y_pred, average='macro'))
-
-
-
-
-
-
-
-
-
-
-# 2-gram ile model eğitimi
-egit_degerlendir(X_bigram, y, "Kelime 2-gram")
-
-# 3-gram ile model eğitimi
-egit_degerlendir(X_trigram, y, "Kelime 3-gram")
-
-
-
-
-
-
-
-
-
-
-
-
-# Karakter 2-gram
-vectorizer_char2 = TfidfVectorizer(analyzer='char', ngram_range=(2, 2))
-X_char2 = vectorizer_char2.fit_transform(df['clean_text'])
-
-# Karakter 3-gram
-vectorizer_char3 = TfidfVectorizer(analyzer='char', ngram_range=(3, 3))
-X_char3 = vectorizer_char3.fit_transform(df['clean_text'])
-
-
-
-
-
-
-
-
-egit_degerlendir(X_char2, y, "Karakter 2-gram")
-egit_degerlendir(X_char3, y, "Karakter 3-gram")
-
+# ======== 4. TF-IDF Özellik Çıkarımı ========
+def get_tfidf_features(train, test, analyzer, ngram_range):
+    tfidf = TfidfVectorizer(analyzer=analyzer, ngram_range=ngram_range, max_features=5000)
+    X_train_vec = tfidf.fit_transform(train)
+    X_test_vec = tfidf.transform(test)
+    return X_train_vec, X_test_vec
+
+# ======== 5. BERT Özellik Çıkarımı ========
+def get_bert_embeddings(texts):
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    model = BertModel.from_pretrained("bert-base-uncased")
+    model.eval()
+    embeddings = []
+
+    for text in tqdm(texts, desc="BERT Embedding"):
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        cls_embedding = outputs.last_hidden_state[:, 0, :].squeeze().numpy()
+        embeddings.append(cls_embedding)
+    return np.array(embeddings)
+
+# ======== 6. Model Eğitimi ve Değerlendirme ========
+def train_and_evaluate(X_train_vec, X_test_vec, y_train, y_test, feature_name):
+    results = []
+
+    models = {
+        "RandomForest": RandomForestClassifier(),
+        "SVM": SVC(),
+        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss'),
+        "MLP": MLPClassifier(),
+        "DecisionTree": DecisionTreeClassifier()
+    }
+
+    if "TFIDF" in feature_name:
+        models["NaiveBayes"] = MultinomialNB()
+
+    for name, model in models.items():
+        print(f"\nTraining {name} on {feature_name}...")
+        model.fit(X_train_vec, y_train)
+        y_pred = model.predict(X_test_vec)
+
+        # Doğru accuracy hesabı
+        overall_acc = accuracy_score(y_test, y_pred)
+
+        report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
+
+        for author_idx in np.unique(y_test):
+            label_name = label_encoder.inverse_transform([author_idx])[0]
+            metrics = report.get(str(author_idx), {})
+            if metrics:
+                results.append({
+                    "Author": label_name,
+                    "Feature": feature_name,
+                    "Model": name,
+                    "Accuracy": overall_acc,
+                    "Precision": metrics.get("precision", 0),
+                    "Recall": metrics.get("recall", 0),
+                    "F1": metrics.get("f1-score", 0)
+                })
+
+    return results
+
+# ======== 7. Özellik Setleriyle Eğitim ========
+all_results = []
+
+# TF-IDF Word 2-gram
+X_train_vec, X_test_vec = get_tfidf_features(X_train, X_test, analyzer='word', ngram_range=(2,2))
+all_results += train_and_evaluate(X_train_vec, X_test_vec, y_train, y_test, "TFIDF_Word_2gram")
+
+# TF-IDF Word 3-gram
+X_train_vec, X_test_vec = get_tfidf_features(X_train, X_test, analyzer='word', ngram_range=(3,3))
+all_results += train_and_evaluate(X_train_vec, X_test_vec, y_train, y_test, "TFIDF_Word_3gram")
+
+# TF-IDF Char 2-gram
+X_train_vec, X_test_vec = get_tfidf_features(X_train, X_test, analyzer='char', ngram_range=(2,2))
+all_results += train_and_evaluate(X_train_vec, X_test_vec, y_train, y_test, "TFIDF_Char_2gram")
+
+# TF-IDF Char 3-gram
+X_train_vec, X_test_vec = get_tfidf_features(X_train, X_test, analyzer='char', ngram_range=(3,3))
+all_results += train_and_evaluate(X_train_vec, X_test_vec, y_train, y_test, "TFIDF_Char_3gram")
+
+# BERT Embedding
+X_train_vec = get_bert_embeddings(X_train.tolist())
+X_test_vec = get_bert_embeddings(X_test.tolist())
+all_results += train_and_evaluate(X_train_vec, X_test_vec, y_train, y_test, "BERT")
+
+# ======== 8. Sonuçları Kaydet ve Özetle ========
+results_df = pd.DataFrame(all_results)
+results_df = results_df.sort_values(by=["Author", "Feature", "Model"])
+results_df.to_csv("author_classification_results.csv", index=False)
+print("\nSonuçlar kaydedildi: author_classification_results.csv")
+
+# Konsola özet yazdır
+print("\n==== Özet Sonuçlar ====\n")
+for author in sorted(results_df['Author'].unique()):
+    print(f"\nYazar: {author}")
+    author_df = results_df[results_df['Author'] == author]
+    for feature in author_df['Feature'].unique():
+        print(f"  Özellik: {feature}")
+        for _, row in author_df[author_df['Feature'] == feature].iterrows():
+            print(f"    {row['Model']:15} Acc: {row['Accuracy']:.3f}  Prec: {row['Precision']:.3f}  Rec: {row['Recall']:.3f}  F1: {row['F1']:.3f}")
